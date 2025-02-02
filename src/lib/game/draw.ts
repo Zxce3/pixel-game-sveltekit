@@ -1,5 +1,5 @@
-import type { TerrainType, Direction, Position, AnimationSettings } from './types';
-import { terrainColors } from './types';
+import type { TerrainType, Direction, Position, AnimationSettings } from '$lib/types';
+import { terrainColors } from '$lib/types';
 
 interface Cloud {
     x: number;

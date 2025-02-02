@@ -98,6 +98,7 @@ export interface DebugMetrics {
 export interface AnimationSettings {
     enableClouds: boolean;
     enableWaves: boolean;
+    enableRiver: boolean;
 }
 
 export const initialGameState: GameState = {
@@ -121,7 +122,8 @@ export const initialDebugMetrics: DebugMetrics = {
 
 export const defaultAnimationSettings: AnimationSettings = {
     enableClouds: false,
-    enableWaves: false
+    enableWaves: false,
+    enableRiver: false
 };
 
 export const DIRECTIONS = {
