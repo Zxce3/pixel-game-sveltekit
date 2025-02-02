@@ -210,7 +210,7 @@
 <div class="flex w-full min-h-dvh items-center justify-center p-4" class:blur-sm={!gameStarted}>
     <div class="w-full max-w-6xl bg-gray-50 rounded flex flex-col gap-y-4 shadow-xl border border-gray-150 p-4 md:p-6">
         <div class="flex justify-between items-center">
-            <h1 class="text-xl md:text-2xl font-bold">Simple Pixel Game</h1>
+            <h2 class="text-xl md:text-2xl font-bold">Simple Pixel Game</h2>
             <div class="flex gap-2">
                 <button 
                     class="px-3 py-2 text-sm rounded transition-colors"
@@ -312,6 +312,4 @@
         background-color: rgba(76, 175, 80, 0.1);
         border: 1px solid #4caf50;
     }
-
-
 </style>
