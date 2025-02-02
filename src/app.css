@@ -1,3 +1,32 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
-@import 'tailwindcss/utilities'
+@import 'tailwindcss/utilities';
+
+button {
+  @apply bg-blue-700 text-white rounded disabled:text-gray-200 disabled:bg-gray-400 
+          hover:enabled:bg-blue-800 transition-colors text-lg md:text-xl;
+}
+canvas {
+  image-rendering: pixelated;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.highlight {
+  @apply bg-blue-100 font-medium;
+}
+
+.blur-sm {
+  filter: blur(4px);
+}
+
+.form-checkbox {
+  @apply rounded border-gray-600 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50;
+}
+
+.settings-panel {
+  @apply transition-all duration-200 ease-in-out;
+}
+
+.settings-panel label:hover {
+  @apply text-blue-300;
+}
