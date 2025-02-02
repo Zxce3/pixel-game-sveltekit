@@ -189,10 +189,6 @@
     }
 </script>
 
-<svelte:head>
-    <title>Web Worker in Sveltekit</title>
-</svelte:head>
-
 {#if !gameStarted}
     <div class="fixed inset-0 bg-gray-900/90 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-lg p-6 max-w-lg w-full">
