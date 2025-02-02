@@ -1,7 +1,7 @@
-import type { GameState, Position, TerrainType, Direction, WorkerStatus } from '../types';
-import { STATUS, MESSAGE, TERRAIN, terrainColors, terrainNames } from '../types';
-import type { Theme } from '../theme';
-import { defaultTheme } from '../theme';
+import type { GameState, Position, TerrainType, Direction, WorkerStatus } from '$lib/types';
+import { STATUS, MESSAGE, TERRAIN, terrainColors, terrainNames } from '$lib/types';
+import type { Theme } from '$lib/theme';
+import { defaultTheme } from '$lib/theme';
 import { IdleState } from '$lib/game/state';
 import { drawPixel } from '$lib/game/draw';
 
