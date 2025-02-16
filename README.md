@@ -84,7 +84,7 @@ Web Workers allow you to run JavaScript in background threads. They can perform 
 
 ```mermaid
 graph TD;
-    A[Main Thread] -->|Post Message| B[Web Worker]
+    A[Main Thread] -->|On Message| B[Web Worker]
     B -->|Post Message| A
     A -->|Render| C[Canvas]
     B -->|Game Logic| D[Game State]
