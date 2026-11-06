@@ -1,216 +1,118 @@
-# Simple Pixel Game with Web Workers
+# Terrain Explorer — Simple Pixel Game
 
-A pixel-style terrain exploration game built with SvelteKit, TypeScript, and Web Workers. This project demonstrates modern web game development techniques with a focus on performance and maintainability.
+A pixel-art exploration game built with **SvelteKit 2, Svelte 5, TypeScript and Web Workers**. Every island is
+procedurally generated from a seed, so any map can be shared with a link. Walk it, uncover every tile, and watch
+the fog-of-war mini-map fill in.
 
-![Game Screenshot](./static/game-ss.png)
+![Gameplay](./static/screenshots/gameplay.png)
+
+<p align="center">
+  <img src="./static/screenshots/title.png" alt="Title screen" width="49%">
+  <img src="./static/screenshots/menu.png" alt="Menu panel" width="49%">
+</p>
+<p align="center">
+  <img src="./static/screenshots/mobile.png" alt="Mobile layout with touch D-pad" width="240">
+</p>
 
 ## Features
 
-- 🎮 Real-time terrain exploration
-- 👷 Web Worker-based game logic
-- 📊 Performance monitoring
-- 🎨 Dynamic animations (clouds, water, rivers)
-- 🎯 Responsive controls
-- 📱 Mobile-friendly design
-- 🌈 Theme support
-- 🛠 Debug tools
-- 🖥 Full-screen minimal UI: glass HUD, title screen, slide-in menu, fog-of-war mini-map, touch D-pad
-- 🔊 Synthesised footsteps, discovery chimes and ambience (mute toggle, no audio files)
-- ✨ Discovery pop effect on newly explored tiles, map-change transition
-- 🧭 Step counter and exploration progress (distinct walkable tiles visited)
-- 🗺 Procedural map generation: random or seeded islands (`?seed=abc` URLs are shareable), always fully reachable
-- 🐢 Terrain-based movement cost (swamp, river, hills and forest slow you down)
+- 🗺 **Procedural islands** – seeded generation (beaches, forests, swamps, hills, mountains, rivers). The same seed
+  always yields the same map, and every walkable tile is guaranteed to be reachable.
+- 🔗 **Shareable maps** – the active seed lives in the URL (`?seed=aurora`); the menu has a *Copy link* button.
+- 🖥 **Full-screen minimal UI** – glass HUD, title screen, slide-in menu, toast messages, responsive on desktop and phones.
+- 🧭 **Exploration progress** – step counter and explored-tiles progress bar, plus a **fog-of-war mini-map**.
+- 🐢 **Terrain movement cost** – swamp, river, hills and forest slow you down; water and mountains block you.
+- 🎞 **Smooth animation** – eased tile-to-tile movement with a walk cycle, flowing river, rolling waves, drifting
+  clouds, and a discovery "pop" on newly explored tiles.
+- 🔊 **Synthesised audio** – terrain-aware footsteps, bump, discovery chime, new-map jingle and ambient waves.
+  Generated with WebAudio, so there are no audio files; mute any time.
+- 📱 **Touch controls** – on-screen D-pad (hold to keep walking) appears automatically on touch devices.
+- 🛠 **Developer info** – FPS, heap usage, worker status and game-state viewer, tucked into the menu.
+- ♿ Keyboard-accessible menus, focus management and `prefers-reduced-motion` support.
 
-## Technical Stack
+## Controls
 
-- **Framework**: SvelteKit
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **Architecture**: Web Workers for game logic
-- **Performance**: RAF-based animation system
-- **State Management**: Custom game state handler
+| Input | Action |
+|---|---|
+| `W A S D` / arrow keys | Move |
+| On-screen D-pad (touch) | Move; hold to keep walking |
+| `M` or `Esc` | Open / close the menu |
+| `N` | Generate a new random island |
 
-## Game Elements
+Menu: load a seed, new island, copy link, toggle clouds / waves / river / sound, terrain legend, developer info.
+Animation and sound preferences are remembered in your browser.
 
-### Terrain Types
-- 🌊 Water (W) - Impassable boundary
-- 🏖 Beach (B) - Transitional zone
-- 🌲 Forest (F) - Standard terrain with cover
-- ⛰ Mountains (M) - Impassable peaks
-- 🌱 Grassland (G) - Open terrain
-- 🌊 River (R) - Crossable water
-- 🥾 Swamp (S) - Difficult terrain
-- 🏔 Hills (H) - Elevated terrain
+## Terrain
 
-### Animations
-- Cloud system with dynamic generation and movement
-- Water wave effects
-- River flow animations
-- Character movement with direction-based sprites
+| Tile | Name | Behaviour |
+|---|---|---|
+| W | Water | Impassable |
+| M | Mountain | Impassable |
+| B | Beach | Normal speed |
+| G | Grassland | Normal speed |
+| F | Forest | Slightly slower (×1.2) |
+| H | Hills | Slower (×1.3) |
+| R | River | Slower (×1.5) |
+| S | Swamp | Slowest (×2) |
 
-### Performance Features
-- FPS monitoring
-- Memory usage tracking
-- Idle state management
-- Frame throttling
-- Efficient canvas rendering
+## How it works
 
-### Debug Features
-- Real-time performance metrics
-- Game state monitoring
-- Terrain information
-- Worker status tracking
-- Animation controls
+```
+Main thread (Game.ts)                         Web Worker (worker.ts)
+─────────────────────                         ──────────────────────
+input, rendering, tweening, effects  ──msg──▶  map, rules, movement, stats
+canvas + Svelte UI                   ◀─msg──   new state / terrain map
+```
 
-## Code Structure
+- **Worker** owns the authoritative game state: terrain map, collision, steps and explored tiles. Messages:
+  `START`, `GAME_UPDATE` (move) and `GENERATE` (new seeded map).
+- **Game** (main thread) sends moves, eases the sprite between tiles, draws the canvas at a fixed 800×600 logical
+  size (CSS scales it, pixelated), and emits gameplay events (`step`, `blocked`, `discover`, `mapreset`) that the UI
+  turns into sound, toasts and transitions.
+- **Map generation** (`mapgen.ts`) – seeded PRNG → two layers of value noise (elevation, moisture) with an island
+  falloff → terrain classification → rivers that run downhill to the sea → keep only the largest connected walkable
+  region → pick a central start tile.
+- Idle states (active → resting → idle → sleeping) lower the frame rate to save power, but never below 30 fps while
+  animations are on.
+
+## Project structure
 
 ```
 src/
 ├── lib/
+│   ├── audio.ts                 # WebAudio sound effects + ambience
+│   ├── theme.ts / types.ts      # Theme, terrain data, shared types and message constants
 │   ├── components/
-│   │   └── DebugPanel.svelte   # Performance monitoring component
-│   │   ├── Hud.svelte          # Glass stats chip + mute/menu buttons
-│   │   ├── MiniMap.svelte      # Fog-of-war mini-map
-│   │   ├── DPad.svelte         # Touch D-pad (hold to walk)
-│   │   ├── TitleScreen.svelte  # Start screen with optional seed
-│   │   └── MenuPanel.svelte    # Map / display / sound / legend / dev info
+│   │   ├── Hud.svelte           # Stats chip, mute and menu buttons
+│   │   ├── MiniMap.svelte       # Fog-of-war mini-map
+│   │   ├── DPad.svelte          # Touch D-pad
+│   │   ├── TitleScreen.svelte   # Start screen with optional seed
+│   │   ├── MenuPanel.svelte     # Map / display / sound / legend / dev info
+│   │   └── DebugPanel.svelte    # Performance and state readout
 │   ├── game/
-│   │   ├── Game.ts            # Main game logic
-│   │   ├── mapgen.ts          # Seeded procedural island generator (+ mapgen.test.ts)
-│   │   ├── draw.ts            # Canvas rendering functions
-│   │   └── state.ts           # Game state management
-│   ├── workers/
-│   │   └── worker.ts          # Web Worker game logic
-│   ├── audio.ts               # Synthesised sound effects + ambience (WebAudio)
-│   ├── types.ts               # TypeScript definitions
-│   └── theme.ts               # Theming system
+│   │   ├── Game.ts              # Main-thread game: input, tween, render loop, events
+│   │   ├── draw.ts              # Canvas drawing (terrain, character, water, clouds, effects)
+│   │   ├── mapgen.ts            # Seeded island generator (+ mapgen.test.ts)
+│   │   └── state.ts             # Idle-state definitions
+│   └── workers/worker.ts        # Game logic worker
 └── routes/
-    └── +page.svelte           # Main game component
+    ├── +layout.svelte           # SEO / social meta tags
+    └── +page.svelte             # Page: wires game, UI, audio and settings
 ```
-
-## How Web Workers Work
-
-Web Workers allow you to run JavaScript in background threads. They can perform tasks without interfering with the user interface. This is especially useful for tasks that are computationally expensive or need to run asynchronously.
-
-### Web Worker Architecture
-
-```mermaid
-graph TD;
-    A[Main Thread] -->|On Message| B[Web Worker]
-    B -->|Post Message| A
-    A -->|Render| C[Canvas]
-    B -->|Game Logic| D[Game State]
-```
-
-### How It Works
-
-1. **Main Thread**: Handles rendering and user input.
-2. **Web Worker**: Processes game logic and state management.
-3. **Communication**: Main thread and worker communicate via `postMessage` and `onmessage`.
-4. **Rendering**: Main thread updates the canvas based on the game state.
-
-### Example Code
-
-#### Main Thread
-
-```typescript
-const worker = new Worker('worker.js');
-
-worker.onmessage = (e) => {
-    const { gameState } = e.data;
-    // Update the game state and render
-};
-
-worker.postMessage({ task: 'START' });
-```
-
-#### Web Worker
-
-```typescript
-self.onmessage = (e) => {
-    const { task } = e.data;
-    if (task === 'START') {
-        // Initialize game state
-        postMessage({ gameState });
-    }
-};
-```
-
-### Documentation
-
-- [MDN Web Docs: Using Web Workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers)
-- [MDN Web Docs: Web Workers API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API)
-- [MDN Web Docs: Worker](https://developer.mozilla.org/en-US/docs/Web/API/Worker)
-
-## Game Features
-
-1. **Terrain System**
-   - Different terrain types with unique properties
-   - Collision detection
-   - Movement cost calculations
-
-2. **Animation System**
-   - Cloud generation and movement
-   - Water wave effects
-   - River flow animations
-   - Character animations
-
-3. **Performance Optimization**
-   - Web Worker offloading
-   - Frame rate management
-   - Idle state handling
-   - Memory monitoring
-
-4. **Debug Tools**
-   - FPS counter
-   - Memory usage
-   - Game state viewer
-   - Animation controls
-
-## Controls
-
-- Arrow keys / WASD (or the on-screen D-pad on touch devices) to move
-- `M` or `Esc` opens the menu (seed, animations, sound, terrain legend, developer info)
-- `N` generates a new random island
 
 ## Development
 
-1. Install dependencies:
+Requires [Bun](https://bun.sh) (npm/pnpm also work).
+
 ```bash
 bun install
+bun run dev        # start the dev server
+bun run check      # svelte-check / TypeScript
+bun run test       # map generator tests (determinism, reachability, variety)
+bun run build      # production build (Netlify adapter)
+bun run preview    # serve the production build
 ```
 
-2. Start development server:
-```bash
-bun run dev
-```
+## Credits and license
 
-3. Build for production:
-```bash
-bun run build
-```
-
-## Architecture
-
-The game uses a multi-threaded architecture:
-
-- Main Thread: Handles rendering and user input
-- Web Worker: Processes game logic and state management
-- RAF Loop: Manages animations and frame timing
-- Event System: Coordinates state updates
-
-## Performance Considerations
-
-- Web Worker offloads computation
-- Frame throttling based on idle state
-- Efficient canvas rendering
-- Memory usage optimization
-- Animation frame management
-
-## License
-
-MIT License - Feel free to use and modify
-
-## Credits
-
-Created as a demonstration of modern web game development techniques using SvelteKit and TypeScript.
+Built by [Zxce3](https://github.com/Zxce3). Released under the [MIT License](./LICENSE).
