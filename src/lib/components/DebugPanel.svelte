@@ -85,13 +85,13 @@
 
 <style>
   .debug-panel {
-    background-color: color-mix(in srgb, var(--panel-bg) 95%, black);
-    color: var(--panel-text);
-    padding: 1rem;
-    border-radius: 0.5rem;
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text, #e8edf7);
+    padding: 0.75rem;
+    border-radius: 0.75rem;
     font-family: ui-monospace, monospace;
-    font-size: 0.875rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    font-size: 0.78rem;
   }
 
   .grid {
@@ -99,11 +99,6 @@
     gap: 1rem;
   }
 
-  @media (min-width: 768px) {
-    .grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
 
   h3 {
     font-weight: bold;

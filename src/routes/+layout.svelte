@@ -28,13 +28,3 @@
 	</script>
 </svelte:head>
 {@render children()}
-<footer class="text-center p-4 bg-gray-100 border-t border-gray-300">
-	<p>
-		<a href="https://github.com/Zxce3/pixel-game-sveltekit" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline font-bold">
-			View on GitHub
-		</a>
-	</p>
-	<p class="text-sm text-gray-600">
-		&copy; {new Date().getFullYear()} Simple Pixel Game. All rights reserved.
-	</p>
-</footer>

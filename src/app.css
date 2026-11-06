@@ -2,31 +2,72 @@
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
-button {
-  @apply bg-blue-700 text-white rounded disabled:text-gray-200 disabled:bg-gray-400 
-          hover:enabled:bg-blue-800 transition-colors text-lg md:text-xl;
-}
-canvas {
-  image-rendering: pixelated;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.highlight {
-  @apply bg-blue-100 font-medium;
-}
-
-.blur-sm {
-  filter: blur(4px);
+:root {
+  --bg: #0a0f1d;
+  --glass: rgba(15, 23, 42, 0.62);
+  --glass-strong: rgba(15, 23, 42, 0.86);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --text: #e8edf7;
+  --muted: #94a3b8;
+  --accent: #5eead4;
+  --accent-ink: #04201c;
+  --danger: #fb7185;
+  color-scheme: dark;
 }
 
-.form-checkbox {
-  @apply rounded border-gray-600 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50;
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
-.settings-panel {
-  @apply transition-all duration-200 ease-in-out;
+canvas { image-rendering: pixelated; }
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
 }
 
-.settings-panel label:hover {
-  @apply text-blue-300;
+.num { font-variant-numeric: tabular-nums; }
+
+/* Buttons are styled explicitly so they don't inherit a global look. */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  padding: 0.55rem 1rem; border-radius: 10px; font-size: 0.9rem; font-weight: 600;
+  background: rgba(255, 255, 255, 0.08); color: var(--text);
+  border: 1px solid var(--glass-border); cursor: pointer;
+  transition: background 0.15s, transform 0.1s, border-color 0.15s;
+}
+.btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn-primary:hover:not(:disabled) { background: #99f6e4; }
+.icon-btn {
+  width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px;
+  color: var(--text); cursor: pointer; font-size: 1.1rem;
+}
+.icon-btn:hover { background: rgba(255, 255, 255, 0.12); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.field {
+  background: rgba(255, 255, 255, 0.06); color: var(--text);
+  border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.55rem 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; min-width: 0;
+}
+.field::placeholder { color: var(--muted); }
+.field:focus { border-color: var(--accent); outline: none; box-shadow: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

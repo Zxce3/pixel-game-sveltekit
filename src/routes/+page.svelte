@@ -1,344 +1,263 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { browser } from '$app/environment';
-    import { Game } from '$lib/game/Game';
-    import DebugPanel from '$lib/components/DebugPanel.svelte';
+    import { fade } from 'svelte/transition';
+    import { get } from 'svelte/store';
+    import { Game, type GameEventType } from '$lib/game/Game';
     import { theme } from '$lib/theme';
-    import { terrainNames, terrainColors } from '$lib/types';
+    import { sfx } from '$lib/audio';
+    import { STATUS, terrainNames } from '$lib/types';
     import type { Position, TerrainType, WorkerStatus } from '$lib/types';
-    import { STATUS } from '$lib/types';
-    import Controls from '$lib/components/Controls.svelte';
+    import type { IdleStateType } from '$lib/game/state';
+    import Hud from '$lib/components/Hud.svelte';
+    import MiniMap from '$lib/components/MiniMap.svelte';
+    import DPad from '$lib/components/DPad.svelte';
+    import TitleScreen from '$lib/components/TitleScreen.svelte';
+    import MenuPanel from '$lib/components/MenuPanel.svelte';
 
-    let game: Game;
-    let enableClouds = false;
-    let canvas: HTMLCanvasElement;
-    let enableWaves = false;
-    let enableRiver = false;
-    let currentTerrain: TerrainType = 'G';
-    let workerStatus: WorkerStatus = STATUS.IDLE;
-    let pixelPos: Position = { x: 2, y: 2 };
-    let debugMessage = '';
-    let isWorkerBusy = false;
-    let terrainData: { colors: Record<string, string>, names: Record<string, string> };
+    const SETTINGS_KEY = 'pixel-settings';
 
-    let fps = 0;
-    let memory = { heap: 0, heapLimit: 0 };
-    let lastFrameTime = performance.now();
-    let frameCount = 0;
-    let browserSupportsMemoryAPI = false;
+    let canvas: HTMLCanvasElement | undefined = $state();
+    let game: Game | undefined = $state();
 
-    let gameStarted = false;
-    let seedInput = '';
-    let currentSeed = '';
-    let steps = 0;
-    let explored = 0;
-    let exploreTotal = 0;
-    $: exploredPct = exploreTotal ? Math.round((explored / exploreTotal) * 100) : 0;
+    // UI state
+    let playing = $state(false);
+    let menuOpen = $state(false);
+    let seedInput = $state('');
+    let currentSeed = $state('');
+    let toast = $state({ text: '', id: 0 });
+    let veil = $state(0); // bump to replay the map-change transition
+    let tick = $state(0); // bump to redraw the mini-map
 
-    let gameState = {
-        currentTerrain: 'G' as TerrainType,
-        terrainData: {
-            colors: terrainColors,
-            names: terrainNames
-        }
-    };
+    // Persisted settings
+    let clouds = $state(true);
+    let waves = $state(true);
+    let river = $state(true);
+    let muted = $state(false);
 
-    let showDebugPanel = false;
-    let showLegend = false;
-    let showSettings = false;
+    // Game state mirrored for the UI
+    let currentTerrain: TerrainType = $state('G');
+    let pixelPos: Position = $state({ x: 2, y: 2 });
+    let steps = $state(0);
+    let explored = $state(0);
+    let exploreTotal = $state(0);
+    let debugMessage = $state('');
+    let workerStatus: WorkerStatus = $state(STATUS.IDLE);
+    let isWorkerBusy = $state(false);
+    let idleState: IdleStateType = $state('active');
 
-    function togglePanel(panel: 'debug' | 'legend' | 'settings'): void {
-        switch (panel) {
-            case 'debug':
-                showDebugPanel = !showDebugPanel;
-                break;
-            case 'legend':
-                showLegend = !showLegend;
-                break;
-            case 'settings':
-                showSettings = !showSettings;
-                break;
-        }
-    }
+    // Debug metrics
+    let fps = $state(0);
+    let memory = $state({ heap: 0, heapLimit: 0 });
+    let browserSupportsMemoryAPI = $state(false);
+    let raf = 0;
 
     interface PerformanceWithMemory extends Performance {
-        memory?: {
-            usedJSHeapSize: number;
-            jsHeapSizeLimit: number;
-        };
+        memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number };
     }
 
-    async function startGame() {
-        if (!browser || !canvas) return;
-        
-        const worker = new Worker(
-            new URL('../lib/workers/worker.ts', import.meta.url),
-            { type: 'module' }
-        );
+    let toastTimer: ReturnType<typeof setTimeout>;
+    function showToast(text: string) {
+        toast = { text, id: toast.id + 1 };
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => (toast = { ...toast, text: '' }), 2200);
+    }
 
-        game = new Game({
-            canvas,
-            worker,
-            theme: $theme,
-            fps: 30
-        });
-
-        game.start();
-        gameStarted = true;
-        const urlSeed = new URLSearchParams(location.search).get('seed');
-        if (urlSeed) {
-            seedInput = urlSeed;
-            game.generate(urlSeed);
+    function onGameEvent(type: GameEventType, detail?: { terrain?: TerrainType; seed?: string }) {
+        switch (type) {
+            case 'step': sfx.step(detail?.terrain); break;
+            case 'discover': sfx.discover(); break;
+            case 'blocked': sfx.bump(); break;
+            case 'mapreset':
+                sfx.newMap();
+                veil++;
+                if (detail?.seed) showToast(`Island “${detail.seed}” ready`);
+                break;
         }
-        updateDebugMetrics();
     }
 
-    function newMap(random = false) {
+    function syncFromGame() {
         if (!game) return;
-        game.generate(random ? '' : seedInput);
-    }
-
-    // Reflect the active seed in the input and URL so a map can be shared.
-    $: if (currentSeed) {
-        seedInput = currentSeed;
-        if (browser) {
+        const s = game.getGameState();
+        currentTerrain = s.currentTerrain;
+        workerStatus = s.state.status;
+        pixelPos = s.state.position;
+        debugMessage = s.state.message || '';
+        isWorkerBusy = s.state.isMoving;
+        idleState = s.state.idleState;
+        steps = s.state.steps ?? 0;
+        explored = s.state.explored ?? 0;
+        exploreTotal = s.state.exploreTotal ?? 0;
+        if (s.seed && s.seed !== currentSeed) {
+            currentSeed = s.seed;
+            seedInput = s.seed;
             const url = new URL(location.href);
-            url.searchParams.set('seed', currentSeed);
+            url.searchParams.set('seed', s.seed);
             history.replaceState(history.state, '', url);
         }
+        const blocked = /blocked by (.+)$/.exec(debugMessage);
+        if (blocked && s.state.status === STATUS.ERROR) showToast(`Blocked by ${blocked[1].toLowerCase()}`);
+        tick++;
     }
 
-    function updateDebugMetrics() {
+    function applySettings() {
+        game?.setAnimationSettings({ enableClouds: clouds, enableWaves: waves, enableRiver: river });
+        saveSettings();
+    }
+    function saveSettings() {
+        try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ clouds, waves, river, muted })); } catch { /* private mode */ }
+    }
+    function toggleMute() {
+        muted = !muted;
+        sfx.setMuted(muted);
+        saveSettings();
+    }
+
+    function play() {
+        sfx.unlock();
+        sfx.click();
+        const seed = seedInput.trim();
+        if (seed && seed !== currentSeed) game?.generate(seed);
+        playing = true;
+        if (game) game.paused = false;
+    }
+    function loadSeed() { sfx.click(); game?.generate(seedInput.trim()); menuOpen = false; }
+    function randomMap() { sfx.click(); game?.generate(''); menuOpen = false; }
+    async function copyLink() {
+        sfx.click();
+        try {
+            await navigator.clipboard.writeText(location.href);
+            showToast('Link copied');
+        } catch { showToast('Copy failed — copy the address bar instead'); }
+    }
+    function setMenu(open: boolean) {
+        menuOpen = open;
+        if (game) game.paused = open || !playing;
+        sfx.click();
+    }
+
+    function onKey(e: KeyboardEvent) {
+        if (!playing || e.ctrlKey || e.metaKey || e.altKey) return;
+        const t = e.target as HTMLElement | null;
+        if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+        const k = e.key.toLowerCase();
+        if (k === 'm') setMenu(!menuOpen);
+        else if (k === 'n' && !menuOpen) randomMap();
+    }
+
+    function metricsLoop() {
+        const frames = (metricsLoop as unknown as { n: number; t: number });
+        frames.n = (frames.n ?? 0) + 1;
         const now = performance.now();
-        frameCount++;
-        if (now - lastFrameTime >= 1000) {
-            fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
-            frameCount = 0;
-            lastFrameTime = now;
-
-            browserSupportsMemoryAPI = !!(performance as PerformanceWithMemory).memory;
-            if (browserSupportsMemoryAPI) {
-                const perfMemory = (performance as PerformanceWithMemory).memory!;
-                memory = {
-                    heap: Math.round(perfMemory.usedJSHeapSize / 1048576),
-                    heapLimit: Math.round(perfMemory.jsHeapSizeLimit / 1048576),
-                };
-            }
+        frames.t ??= now;
+        if (now - frames.t >= 1000) {
+            fps = Math.round((frames.n * 1000) / (now - frames.t));
+            frames.n = 0;
+            frames.t = now;
+            const m = (performance as PerformanceWithMemory).memory;
+            browserSupportsMemoryAPI = !!m;
+            if (m) memory = { heap: Math.round(m.usedJSHeapSize / 1048576), heapLimit: Math.round(m.jsHeapSizeLimit / 1048576) };
         }
-        requestAnimationFrame(updateDebugMetrics);
-    }
-    $: enableClouds = game?.animationSettings.enableClouds ?? false;
-
-    function updateGameState() {
-        if (game) {
-            const state = game.getGameState();
-            currentTerrain = state.currentTerrain;
-            workerStatus = state.state.status;
-            pixelPos = state.state.position;
-            debugMessage = state.state.message || '';
-            currentSeed = state.seed ?? currentSeed;
-            steps = state.state.steps ?? 0;
-            explored = state.state.explored ?? 0;
-            exploreTotal = state.state.exploreTotal ?? 0;
-            isWorkerBusy = state.state.isMoving;
-            gameState = {
-                currentTerrain: state.currentTerrain,
-                terrainData: {
-                    colors: state.terrainColors,
-                    names: state.terrainNames
-                }
-            };
-        }
-    }
-
-    $: if (game?.state) {
-        updateGameState();
+        raf = requestAnimationFrame(metricsLoop);
     }
 
     onMount(() => {
-        const onUpdate = ((e: CustomEvent) => {
-            if (e.detail) {
-                const { message } = e.detail;
-                if (message) {
-                    debugMessage = message;
-                }
-                updateGameState();
-            }
-        }) as EventListener;
+        try {
+            const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
+            clouds = saved.clouds ?? clouds; waves = saved.waves ?? waves; river = saved.river ?? river; muted = saved.muted ?? muted;
+        } catch { /* ignore corrupt settings */ }
+        sfx.muted = muted;
+
+        const urlSeed = new URLSearchParams(location.search).get('seed');
+        if (urlSeed) seedInput = urlSeed;
+
+        // Boot the game immediately (paused) so the title screen sits over a live map.
+        const worker = new Worker(new URL('../lib/workers/worker.ts', import.meta.url), { type: 'module' });
+        game = new Game({ canvas: canvas!, worker, theme: get(theme), fps: 30, onEvent: onGameEvent });
+        game.paused = true;
+        game.start();
+        game.setAnimationSettings({ enableClouds: clouds, enableWaves: waves, enableRiver: river });
+        if (urlSeed) game.generate(urlSeed);
+
+        const onUpdate = () => syncFromGame();
         window.addEventListener('gamestateupdate', onUpdate);
+        raf = requestAnimationFrame(metricsLoop);
         return () => window.removeEventListener('gamestateupdate', onUpdate);
     });
 
     onDestroy(() => {
-        if (game) {
-            game.destroy();
-        }
+        // onDestroy also runs during SSR, where window/rAF don't exist.
+        if (!browser) return;
+        cancelAnimationFrame(raf);
+        clearTimeout(toastTimer);
+        game?.destroy();
     });
-
-    // Add reactive store for game-specific terrain data
-    $: terrainData = {
-        colors: game?.terrainColors || terrainColors,
-        names: game?.terrainNames || terrainNames
-    };
-
-    // Update animation settings binding
-    function updateAnimationSettings() {
-        if (game) {
-            game.setAnimationSettings({
-                enableClouds,
-                enableWaves,
-                enableRiver
-            });
-        }
-    }
-
-    $: {
-        if (enableClouds !== undefined || enableWaves !== undefined || enableRiver !== undefined) {
-            updateAnimationSettings();
-        }
-    }
 </script>
 
-{#if !gameStarted}
-    <div class="fixed inset-0 bg-gray-900/90 z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-lg p-6 max-w-lg w-full">
-            <h1 class="text-2xl font-bold mb-4">Terrain Explorer</h1>
-            <div class="prose prose-sm mb-6">
-                <p>Welcome to the terrain exploration game! Navigate through different landscapes:</p>
-                <ul class="list-disc pl-4 space-y-1">
-                    <li><span class="font-medium">Arrow keys</span> or buttons to move</li>
-                    <li><span class="font-medium">Mountains</span> and <span class="font-medium">Water</span> are impassable</li>
-                    <li>Watch the debug panel for performance metrics</li>
-                    <li>Explore different terrains: forests, hills, beaches, and more!</li>
-                </ul>
-            </div>
-            <button class="w-full bg-blue-700 text-white rounded p-3 font-medium hover:bg-blue-800 transition-colors" on:click={startGame}> Start Exploring </button>
-        </div>
+<svelte:window onkeydown={onKey} />
+
+<main class="stage">
+    <div class="field-wrap">
+        <canvas bind:this={canvas} id="gameCanvas" width="800" height="600" aria-label="Game map"></canvas>
+        {#key veil}
+            {#if veil > 0}<div class="veil"></div>{/if}
+        {/key}
     </div>
-{/if}
 
-<div class="flex w-full min-h-dvh items-center justify-center p-4" class:blur-sm={!gameStarted}>
-    <div class="w-full max-w-6xl bg-gray-50 rounded flex flex-col gap-y-4 shadow-xl border border-gray-150 p-4 md:p-6">
-        <div class="flex justify-between items-center">
-            <h2 class="text-xl md:text-2xl font-bold">Simple Pixel Game</h2>
-            <div class="flex gap-2">
-                <button 
-                    class="px-3 py-2 text-sm rounded transition-colors"
-                    class:bg-blue-600={showDebugPanel}
-                    class:text-white={showDebugPanel}
-                    class:bg-gray-200={!showDebugPanel}
-                    on:click={() => togglePanel('debug')}
-                >
-                    {showDebugPanel ? 'Hide' : 'Show'} Debug
-                </button>
-                <button 
-                    class="px-3 py-2 text-sm rounded transition-colors"
-                    class:bg-blue-600={showLegend}
-                    class:text-white={showLegend}
-                    class:bg-gray-200={!showLegend}
-                    on:click={() => togglePanel('legend')}
-                >
-                    {showLegend ? 'Hide' : 'Show'} Legend
-                </button>
-                <button 
-                    class="px-3 py-2 text-sm rounded transition-colors"
-                    class:bg-blue-600={showSettings}
-                    class:text-white={showSettings}
-                    class:bg-gray-200={!showSettings}
-                    on:click={() => togglePanel('settings')}
-                >
-                    {showSettings ? 'Hide' : 'Show'} Settings
-                </button>
-            </div>
+    {#if playing}
+        <div class="ui" transition:fade={{ duration: 300 }}>
+            <Hud terrain={currentTerrain} {steps} {explored} {exploreTotal} {muted} onmenu={() => setMenu(true)} onmute={toggleMute} />
+
+            <div class="bottom-left"><MiniMap {game} {tick} /></div>
+            <div class="bottom-right"><DPad {game} /></div>
+            <p class="hint glass" aria-hidden="true">WASD / arrows · <b>M</b> menu · <b>N</b> new island</p>
         </div>
+    {/if}
 
-        <!-- Debug Panel -->
-        {#if showDebugPanel}
-            <DebugPanel
-                {fps}
-                {memory}
-                {browserSupportsMemoryAPI}
-                {workerStatus}
-                {pixelPos}
-                {terrainNames}
-                {currentTerrain}
-                {debugMessage}
-                {isWorkerBusy}
-                idleState={game?.state?.idleState || 'active'}
-            />
-        {/if}
-
-        <form class="flex flex-wrap items-center gap-2 text-sm" on:submit|preventDefault={() => newMap(false)}>
-            <label for="seed" class="text-gray-700">Map seed</label>
-            <input
-                id="seed"
-                bind:value={seedInput}
-                placeholder="random"
-                autocomplete="off"
-                spellcheck="false"
-                class="px-2 py-1 rounded border border-gray-300 w-36 font-mono"
-            />
-            <button type="submit" class="px-3 py-1.5 rounded bg-gray-200 text-gray-800 hover:bg-gray-300 transition-colors" disabled={!game}>Load seed</button>
-            <button type="button" class="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors" on:click={() => newMap(true)} disabled={!game}>🎲 New map</button>
-        </form>
-
-        <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-700" aria-live="polite">
-            <span>Steps: <strong>{steps}</strong></span>
-            <span>Explored: <strong>{explored}/{exploreTotal}</strong> ({exploredPct}%)</span>
-            <span>Terrain: <strong>{terrainNames[currentTerrain]}</strong></span>
-            <span class="text-gray-500">WASD / arrows · swamp and river slow you down</span>
-        </div>
-
-        <div class="relative w-full aspect-[4/3] max-h-[70vh]">
-            <canvas
-                bind:this={canvas}
-                id="gameCanvas"
-                width="800"
-                height="600"
-                class="absolute inset-0 w-full h-full object-contain [image-rendering:pixelated] border border-gray-200 rounded"
-            ></canvas>
-        </div>
-        
-        <Controls {game} />
-
-        <!-- Legend -->
-        {#if showLegend}
-            <div class="legend grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-xs md:text-sm mt-4">
-                {#each Object.entries(gameState.terrainData.colors) as [type, color]}
-                    <div class="flex items-center gap-2 p-1 rounded" class:highlight={gameState.currentTerrain === type}>
-                        <div class="w-3 h-3 md:w-4 md:h-4" style="background: {color}"></div>
-                        <span>{gameState.terrainData.names[type as TerrainType]}</span>
-                    </div>
-                {/each}
-            </div>
-        {/if}
-
-        <!-- Animation Settings -->
-        {#if showSettings}
-            <div class="settings-panel bg-gray-800 text-white p-3 md:p-4 rounded text-xs md:text-sm font-mono mt-4">
-                <h3 class="font-bold mb-2">Animation Settings</h3>
-                <div class="grid grid-cols-3 gap-2">
-                    <label class="flex items-center gap-2">
-                        <input type="checkbox" bind:checked={enableClouds} class="form-checkbox text-blue-600" />
-                        <span>Clouds {enableClouds ? '(Active)' : ''}</span>
-                    </label>
-                    <label class="flex items-center gap-2">
-                        <input type="checkbox" bind:checked={enableWaves} class="form-checkbox text-blue-600" />
-                        <span>Water Animation {enableWaves ? '(Active)' : ''}</span>
-                    </label>
-                    <label class="flex items-center gap-2">
-                        <input type="checkbox" bind:checked={enableRiver} class="form-checkbox text-blue-600" />
-                        <span>River {enableRiver ? '(Active)' : ''}</span>
-                    </label>
-                </div>
-            </div>
+    <div class="toast-region" aria-live="polite">
+        {#if toast.text}
+            {#key toast.id}<div class="toast glass">{toast.text}</div>{/key}
         {/if}
     </div>
-</div>
+
+    {#if !playing}
+        <TitleScreen bind:seed={seedInput} onplay={play} />
+    {/if}
+
+    {#if menuOpen}
+        <MenuPanel
+            bind:seed={seedInput} {currentSeed} bind:clouds bind:waves bind:river {muted} {currentTerrain}
+            onclose={() => setMenu(false)} onload={loadSeed} onrandom={randomMap} oncopy={copyLink}
+            onsettings={applySettings} onmute={toggleMute}
+            {fps} {memory} {browserSupportsMemoryAPI} {workerStatus} {pixelPos} {debugMessage} {isWorkerBusy} {idleState}
+        />
+    {/if}
+</main>
 
 <style>
-    .highlight {
-        background-color: rgba(76, 175, 80, 0.1);
-        border: 1px solid #4caf50;
+    .stage { position: fixed; inset: 0; overflow: hidden; background: radial-gradient(ellipse at 50% 40%, #12203b 0%, #0a0f1d 70%); }
+    .field-wrap { position: absolute; inset: 0; display: grid; place-items: center; }
+    canvas {
+        width: min(100vw, calc(100dvh * 4 / 3));
+        aspect-ratio: 4 / 3;
+        height: auto;
+        display: block;
+        box-shadow: 0 0 80px rgba(0, 0, 0, 0.55);
     }
+    .veil { position: absolute; inset: 0; background: #0a0f1d; pointer-events: none; animation: veil 0.7s ease-out forwards; }
+    @keyframes veil { from { opacity: 1; } to { opacity: 0; } }
+
+    .ui { position: absolute; inset: 0; pointer-events: none; }
+    .bottom-left, .bottom-right { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); pointer-events: auto; z-index: 5; }
+    .bottom-left { left: max(12px, env(safe-area-inset-left)); }
+    .bottom-right { right: max(12px, env(safe-area-inset-right)); display: none; }
+    @media (pointer: coarse) { .bottom-right { display: block; } .hint { display: none; } }
+    .hint { position: absolute; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); margin: 0; padding: 6px 14px; font-size: 0.78rem; color: var(--muted); white-space: nowrap; z-index: 5; }
+    .hint b { color: var(--text); }
+    @media (max-width: 640px) { .hint { display: none; } }
+
+    .toast-region { position: absolute; top: max(72px, calc(env(safe-area-inset-top) + 60px)); left: 50%; transform: translateX(-50%); z-index: 40; pointer-events: none; }
+    .toast { padding: 8px 16px; font-size: 0.88rem; animation: toast 2.2s ease forwards; white-space: nowrap; }
+    @media (max-width: 640px) { .toast-region { top: calc(env(safe-area-inset-top) + 104px); } }
+    @keyframes toast { 0% { opacity: 0; transform: translateY(-6px); } 10%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 </style>
