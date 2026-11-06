@@ -356,3 +356,42 @@ export function drawPixel(
         });
     }
 }
+
+
+export interface Effect {
+    /** Tile coordinates. */
+    x: number;
+    y: number;
+    start: number;
+}
+
+/** "Discovery" pop: an expanding ring with a few sparkles on a newly explored tile. */
+export function drawEffects(
+    ctx: CanvasRenderingContext2D,
+    effects: Effect[],
+    now: number,
+    tileSize: number
+): void {
+    ctx.save();
+    for (const fx of effects) {
+        const t = Math.min(1, (now - fx.start) / 600);
+        const ease = 1 - (1 - t) * (1 - t);
+        const cx = (fx.x + 0.5) * tileSize, cy = (fx.y + 0.5) * tileSize;
+        const alpha = 1 - t;
+
+        ctx.lineWidth = 3 * (1 - t) + 1;
+        ctx.strokeStyle = `rgba(94, 234, 212, ${alpha * 0.9})`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6 + ease * tileSize * 0.7, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * Math.PI * 2 + 0.4;
+            const r = 8 + ease * tileSize * 0.6;
+            const s = 3 * (1 - t) + 1;
+            ctx.fillRect(Math.round(cx + Math.cos(a) * r - s / 2), Math.round(cy + Math.sin(a) * r - s / 2), s, s);
+        }
+    }
+    ctx.restore();
+}

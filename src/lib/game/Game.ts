@@ -3,7 +3,7 @@ import { STATUS, MESSAGE, TERRAIN, terrainColors, terrainNames, terrainMovementC
 import type { Theme } from '$lib/theme';
 import { defaultTheme } from '$lib/theme';
 import { IdleState } from '$lib/game/state';
-import { drawPixel } from '$lib/game/draw';
+import { drawPixel, drawEffects, type Effect } from '$lib/game/draw';
 
 interface Cloud {
     x: number;
@@ -18,7 +18,11 @@ export interface GameConfig {
     worker: Worker;
     theme?: Theme;
     fps?: number;
+    /** Gameplay events for sound / UI juice. */
+    onEvent?: (type: GameEventType, detail?: { terrain?: TerrainType; seed?: string }) => void;
 }
+
+export type GameEventType = 'step' | 'blocked' | 'discover' | 'mapreset';
 
 export class Game {
     private canvas: HTMLCanvasElement;
@@ -40,6 +44,12 @@ export class Game {
     private pendingDuration = 150;
     
     public state: GameState;
+    /** Input is ignored while paused (menu open / title screen). */
+    public paused = false;
+    /** Tiles the player has stood on, as "x,y" keys (drives the mini-map fog). */
+    public visited = new Set<string>();
+    private effects: Effect[] = [];
+    private onEvent?: GameConfig['onEvent'];
     /** Seed of the current generated map ('' for the built-in island). */
     public seed = '';
     public terrainColors = terrainColors;
@@ -66,6 +76,7 @@ export class Game {
         this.canvas = config.canvas;
         this.ctx = this.canvas.getContext('2d')!;
         this.worker = config.worker;
+        this.onEvent = config.onEvent;
         this.frameThrottle = 1000 / (config.fps || 30);
 
         this.state = {
@@ -105,16 +116,31 @@ export class Game {
                     isMoving,
                     message: message || this.state.message // Prioritize incoming message
                 };
+                const key = `${this.state.position.x},${this.state.position.y}`;
                 if (!this.terrainMap || reset) {
-                    if (reset) { this.state.isMoving = false; this.releaseCooldown(); }
+                    if (reset) {
+                        this.state.isMoving = false;
+                        this.releaseCooldown();
+                        this.effects = [];
+                    }
+                    this.visited = new Set([key]);
                     this.renderPos = { ...this.state.position }; // first sync: no tween
+                    if (reset) this.onEvent?.('mapreset', { seed });
                 } else if (moved) {
+                    const fresh = !this.visited.has(key);
+                    this.visited.add(key);
+                    this.onEvent?.('step', { terrain: this.state.terrain });
+                    if (fresh) {
+                        this.effects.push({ x: this.state.position.x, y: this.state.position.y, start: performance.now() });
+                        this.onEvent?.('discover', { terrain: this.state.terrain });
+                    }
                     this.moveFrom = { ...this.renderPos };
                     this.moveStart = performance.now();
                     this.moveDuration = this.pendingDuration;
                     this.state.isMoving = true;
                 } else if (this.movementCooldown) {
                     this.releaseCooldown(); // blocked move: don't bob in place or lock input
+                    this.onEvent?.('blocked');
                 }
                 this.handleStateUpdate();
             }
@@ -135,7 +161,7 @@ export class Game {
     }
 
     private handleKeyDown(e: KeyboardEvent): void {
-        if (!this.isRunning) return;
+        if (!this.isRunning || this.paused) return;
 
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         const target = e.target as HTMLElement | null;
@@ -202,7 +228,7 @@ export class Game {
     }
 
     public move(direction: Direction): void {
-        if (this.movementCooldown || !this.isRunning) return;
+        if (this.movementCooldown || !this.isRunning || this.paused) return;
 
         this.state.facing = direction;
         this.movementCooldown = true;
@@ -309,6 +335,9 @@ export class Game {
             cloudOffset: this.cloudOffset,
             tileSize: 40
         });
+
+        this.effects = this.effects.filter(fx => performance.now() - fx.start < 650);
+        drawEffects(this.ctx, this.effects, performance.now(), 40);
     }
 
     public setAnimationSettings(settings: { 
@@ -321,16 +350,16 @@ export class Game {
             ...settings
         };
         
-        if (!settings.enableClouds) {
+        if (settings.enableClouds === false) {
             this.cloudOffset = 0;
             this.initializeClouds();
         }
         
-        if (!settings.enableWaves) {
+        if (settings.enableWaves === false) {
             this.waterOffset = 0;
         }
 
-        if (!settings.enableRiver) {
+        if (settings.enableRiver === false) {
             this.riverOffset = 0;
         }
     }
