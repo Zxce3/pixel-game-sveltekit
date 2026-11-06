@@ -15,6 +15,7 @@ A pixel-style terrain exploration game built with SvelteKit, TypeScript, and Web
 - 🌈 Theme support
 - 🛠 Debug tools
 - 🧭 Step counter and exploration progress (distinct walkable tiles visited)
+- 🗺 Procedural map generation: random or seeded islands (`?seed=abc` URLs are shareable), always fully reachable
 - 🐢 Terrain-based movement cost (swamp, river, hills and forest slow you down)
 
 ## Technical Stack
@@ -68,6 +69,7 @@ src/
 │   │   └── Controls.svelte     # Game controls component
 │   ├── game/
 │   │   ├── Game.ts            # Main game logic
+│   │   ├── mapgen.ts          # Seeded procedural island generator (+ mapgen.test.ts)
 │   │   ├── draw.ts            # Canvas rendering functions
 │   │   └── state.ts           # Game state management
 │   ├── workers/
