@@ -14,6 +14,9 @@ A pixel-style terrain exploration game built with SvelteKit, TypeScript, and Web
 - 📱 Mobile-friendly design
 - 🌈 Theme support
 - 🛠 Debug tools
+- 🖥 Full-screen minimal UI: glass HUD, title screen, slide-in menu, fog-of-war mini-map, touch D-pad
+- 🔊 Synthesised footsteps, discovery chimes and ambience (mute toggle, no audio files)
+- ✨ Discovery pop effect on newly explored tiles, map-change transition
 - 🧭 Step counter and exploration progress (distinct walkable tiles visited)
 - 🗺 Procedural map generation: random or seeded islands (`?seed=abc` URLs are shareable), always fully reachable
 - 🐢 Terrain-based movement cost (swamp, river, hills and forest slow you down)
@@ -66,7 +69,11 @@ src/
 ├── lib/
 │   ├── components/
 │   │   └── DebugPanel.svelte   # Performance monitoring component
-│   │   └── Controls.svelte     # Game controls component
+│   │   ├── Hud.svelte          # Glass stats chip + mute/menu buttons
+│   │   ├── MiniMap.svelte      # Fog-of-war mini-map
+│   │   ├── DPad.svelte         # Touch D-pad (hold to walk)
+│   │   ├── TitleScreen.svelte  # Start screen with optional seed
+│   │   └── MenuPanel.svelte    # Map / display / sound / legend / dev info
 │   ├── game/
 │   │   ├── Game.ts            # Main game logic
 │   │   ├── mapgen.ts          # Seeded procedural island generator (+ mapgen.test.ts)
@@ -74,6 +81,7 @@ src/
 │   │   └── state.ts           # Game state management
 │   ├── workers/
 │   │   └── worker.ts          # Web Worker game logic
+│   ├── audio.ts               # Synthesised sound effects + ambience (WebAudio)
 │   ├── types.ts               # TypeScript definitions
 │   └── theme.ts               # Theming system
 └── routes/
@@ -161,11 +169,9 @@ self.onmessage = (e) => {
 
 ## Controls
 
-- Arrow keys or WASD for movement
-- Toggle panels:
-  - Debug information
-  - Terrain legend
-  - Animation settings
+- Arrow keys / WASD (or the on-screen D-pad on touch devices) to move
+- `M` or `Esc` opens the menu (seed, animations, sound, terrain legend, developer info)
+- `N` generates a new random island
 
 ## Development
 
