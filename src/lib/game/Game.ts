@@ -40,6 +40,8 @@ export class Game {
     private pendingDuration = 150;
     
     public state: GameState;
+    /** Seed of the current generated map ('' for the built-in island). */
+    public seed = '';
     public terrainColors = terrainColors;
     public terrainNames = terrainNames;
     private isRunning = false;
@@ -86,7 +88,8 @@ export class Game {
 
     private setupWorker(): void {
         this.worker.onmessage = (e: MessageEvent) => {
-            const { status, message, gameState, terrainMap } = e.data;
+            const { status, message, gameState, terrainMap, reset, seed } = e.data;
+            if (seed) this.seed = seed;
             
             if (gameState) {
                 const prev = this.state.position;
@@ -102,7 +105,8 @@ export class Game {
                     isMoving,
                     message: message || this.state.message // Prioritize incoming message
                 };
-                if (!this.terrainMap) {
+                if (!this.terrainMap || reset) {
+                    if (reset) { this.state.isMoving = false; this.releaseCooldown(); }
                     this.renderPos = { ...this.state.position }; // first sync: no tween
                 } else if (moved) {
                     this.moveFrom = { ...this.renderPos };
@@ -160,7 +164,8 @@ export class Game {
                 terrainMap: this.terrainMap,
                 terrainColors: this.terrainColors,
                 terrainNames: this.terrainNames,
-                message: this.state.message
+                message: this.state.message,
+                seed: this.seed
             }
         }));
     }
@@ -185,6 +190,11 @@ export class Game {
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
         }
+    }
+
+    /** Generate a new map. Empty/undefined seed = random; same seed = same map. */
+    public generate(seed?: string): void {
+        this.worker.postMessage({ task: MESSAGE.GENERATE, seed });
     }
 
     public sendDirection(direction: Direction): void {
@@ -341,7 +351,8 @@ export class Game {
             currentTerrain: this.currentTerrain,
             terrainMap: this.terrainMap,
             terrainColors: this.terrainColors,
-            terrainNames: this.terrainNames
+            terrainNames: this.terrainNames,
+            seed: this.seed
         };
     }
 

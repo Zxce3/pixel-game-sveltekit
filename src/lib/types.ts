@@ -5,7 +5,7 @@ import type { Theme } from './theme';
 export type WorkerStatus = 'STATUS_FINISHED' | 'STATUS_PROCESSING' | 'STATUS_IDLE' | 'STATUS_ERROR';
 
 // Worker Message Type
-export type WorkerMessageType = 'START' | 'GAME_UPDATE';
+export type WorkerMessageType = 'START' | 'GAME_UPDATE' | 'GENERATE';
 
 // Add new status constants
 export const STATUS_FINISHED = 'STATUS_FINISHED';
@@ -16,6 +16,7 @@ export const STATUS_ERROR = 'STATUS_ERROR';
 // Add new message constants
 export const MESSAGE_START = 'START';
 export const MESSAGE_GAME_UPDATE = 'GAME_UPDATE';
+export const MESSAGE_GENERATE = 'GENERATE';
 
 // Update STATUS object
 export const STATUS = {
@@ -27,7 +28,8 @@ export const STATUS = {
 
 export const MESSAGE = {
     START: MESSAGE_START,
-    GAME_UPDATE: MESSAGE_GAME_UPDATE
+    GAME_UPDATE: MESSAGE_GAME_UPDATE,
+    GENERATE: MESSAGE_GENERATE
 } as const;
 
 export const TERRAIN = {

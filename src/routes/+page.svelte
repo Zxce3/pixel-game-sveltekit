@@ -28,6 +28,8 @@
     let browserSupportsMemoryAPI = false;
 
     let gameStarted = false;
+    let seedInput = '';
+    let currentSeed = '';
     let steps = 0;
     let explored = 0;
     let exploreTotal = 0;
@@ -83,7 +85,27 @@
 
         game.start();
         gameStarted = true;
+        const urlSeed = new URLSearchParams(location.search).get('seed');
+        if (urlSeed) {
+            seedInput = urlSeed;
+            game.generate(urlSeed);
+        }
         updateDebugMetrics();
+    }
+
+    function newMap(random = false) {
+        if (!game) return;
+        game.generate(random ? '' : seedInput);
+    }
+
+    // Reflect the active seed in the input and URL so a map can be shared.
+    $: if (currentSeed) {
+        seedInput = currentSeed;
+        if (browser) {
+            const url = new URL(location.href);
+            url.searchParams.set('seed', currentSeed);
+            history.replaceState(history.state, '', url);
+        }
     }
 
     function updateDebugMetrics() {
@@ -114,6 +136,7 @@
             workerStatus = state.state.status;
             pixelPos = state.state.position;
             debugMessage = state.state.message || '';
+            currentSeed = state.seed ?? currentSeed;
             steps = state.state.steps ?? 0;
             explored = state.state.explored ?? 0;
             exploreTotal = state.state.exploreTotal ?? 0;
@@ -244,6 +267,20 @@
                 idleState={game?.state?.idleState || 'active'}
             />
         {/if}
+
+        <form class="flex flex-wrap items-center gap-2 text-sm" on:submit|preventDefault={() => newMap(false)}>
+            <label for="seed" class="text-gray-700">Map seed</label>
+            <input
+                id="seed"
+                bind:value={seedInput}
+                placeholder="random"
+                autocomplete="off"
+                spellcheck="false"
+                class="px-2 py-1 rounded border border-gray-300 w-36 font-mono"
+            />
+            <button type="submit" class="px-3 py-1.5 rounded bg-gray-200 text-gray-800 hover:bg-gray-300 transition-colors" disabled={!game}>Load seed</button>
+            <button type="button" class="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors" on:click={() => newMap(true)} disabled={!game}>🎲 New map</button>
+        </form>
 
         <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-700" aria-live="polite">
             <span>Steps: <strong>{steps}</strong></span>

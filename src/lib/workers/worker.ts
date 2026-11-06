@@ -3,6 +3,7 @@
 import type { GameState, Position, TerrainType, Direction } from '$lib/types';
 import { STATUS, MESSAGE, TERRAIN, terrainNames } from '$lib/types';
 import { IdleState, IdleThresholds } from '$lib/game/state';
+import { generateMap, randomSeed } from '$lib/game/mapgen';
 
 declare var self: Worker;
 
@@ -10,6 +11,7 @@ interface WorkerMessage {
     task: string;
     direction?: Direction;
     time?: number;
+    seed?: string;
 }
 
 interface WorkerResponse {
@@ -17,6 +19,8 @@ interface WorkerResponse {
     message?: string;
     gameState?: GameState;
     terrainMap?: TerrainType[][];
+    reset?: boolean;
+    seed?: string;
     step?: number;
     total?: number;
     result?: number;
@@ -111,7 +115,7 @@ const terrainProperties = {
  * S - Swamp: Difficult terrain, slower movement
  * H - Hills: Elevated terrain, strategic positions
  */
-const terrainMap: TerrainType[][] = [
+let terrainMap: TerrainType[][] = [
   ['W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'],
   ['W','W','B','B','B','B','B','B','B','B','B','B','B','B','B','B','B','B','W','W'],
   ['W','B','G','G','F','F','F','H','H','M','H','H','F','F','F','G','G','B','B','W'],
@@ -144,6 +148,9 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
             case MESSAGE.START:
                 handleGameStart(e.data.time);
                 break;
+            case MESSAGE.GENERATE:
+                handleGenerate(e.data.seed);
+                break;
             case MESSAGE.GAME_UPDATE:
                 if (e.data.direction) {
                     handleMovement(e.data.direction);
@@ -174,6 +181,32 @@ function handleGameStart(time = 100): void {
         terrainMap
     });
     longRunningFunction(time);
+}
+
+/**
+ * Replaces the map with a freshly generated island and resets the run.
+ * An empty seed picks a random one; the same seed always gives the same map.
+ */
+function handleGenerate(seed?: string): void {
+    const used = seed?.trim() || randomSeed();
+    const { map, start } = generateMap(used);
+    terrainMap = map;
+    gameState.position = { ...start };
+    gameState.facing = 'down';
+    gameState.currentTerrain = gameState.terrain = map[start.y][start.x];
+    steps = 0;
+    visited.clear();
+    visited.add(`${start.x},${start.y}`);
+    syncStats();
+    gameState.message = `Generated map "${used}"`;
+    postMessage({
+        status: STATUS.PROCESSING,
+        message: gameState.message,
+        gameState,
+        terrainMap,
+        reset: true,
+        seed: used
+    } as WorkerResponse);
 }
 
 /**
