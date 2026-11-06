@@ -126,15 +126,17 @@
     }
 
     onMount(() => {
-        window.addEventListener('gamestateupdate', ((e: CustomEvent) => {
+        const onUpdate = ((e: CustomEvent) => {
             if (e.detail) {
-                const { state, message } = e.detail;
+                const { message } = e.detail;
                 if (message) {
                     debugMessage = message;
                 }
                 updateGameState();
             }
-        }) as EventListener);
+        }) as EventListener;
+        window.addEventListener('gamestateupdate', onUpdate);
+        return () => window.removeEventListener('gamestateupdate', onUpdate);
     });
 
     onDestroy(() => {
@@ -142,28 +144,6 @@
             game.destroy();
         }
     });
-
-    function handleKeyDown(e: KeyboardEvent) {
-        if (!gameStarted || !game) return;
-        switch (e.key.toLowerCase()) {
-            case 'arrowleft':
-            case 'a':
-                game.move('left');
-                break;
-            case 'arrowright':
-            case 'd':
-                game.move('right');
-                break;
-            case 'arrowup':
-            case 'w':
-                game.move('up');
-                break;
-            case 'arrowdown':
-            case 's':
-                game.move('down');
-                break;
-        }
-    }
 
     // Add reactive store for game-specific terrain data
     $: terrainData = {
@@ -304,8 +284,6 @@
         {/if}
     </div>
 </div>
-
-<svelte:window on:keydown={handleKeyDown} />
 
 <style>
     .highlight {

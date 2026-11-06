@@ -136,19 +136,10 @@
     color: var(--warning-color);
   }
 
-  .highlight {
-    background-color: color-mix(in srgb, var(--success-color) 10%, transparent);
-    border: 1px solid var(--success-color);
-  }
     
   dd {
     font-weight: 600;
     transition: all 0.2s ease;
   }
 
-  .text-highlight {
-    background-color: color-mix(in srgb, var(--accent-color) 15%, transparent);
-    padding: 0.125rem 0.25rem;
-    border-radius: 0.25rem;
-  }
 </style>

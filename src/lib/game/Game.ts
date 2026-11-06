@@ -28,6 +28,8 @@ export class Game {
     private lastFrameTime = 0;
     private frameThrottle: number;
     private movementCooldown = false;
+    private onKeyDown = (e: KeyboardEvent) => this.handleKeyDown(e);
+    private onResize = () => this.handleResize();
     
     public state: GameState;
     public terrainColors = terrainColors;
@@ -99,26 +101,25 @@ export class Game {
     }
 
     private setupEventListeners(): void {
-        window.addEventListener('keydown', this.handleKeyDown.bind(this));
-        window.addEventListener('resize', this.handleResize.bind(this));
+        window.addEventListener('keydown', this.onKeyDown);
+        window.addEventListener('resize', this.onResize);
     }
 
     private handleKeyDown(e: KeyboardEvent): void {
         if (!this.isRunning) return;
 
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const target = e.target as HTMLElement | null;
+        if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+
         const keyMap: Record<string, Direction> = {
-            'ArrowLeft': 'left',
-            'ArrowRight': 'right',
-            'ArrowUp': 'up',
-            'ArrowDown': 'down',
-            'a': 'left',
-            'd': 'right',
-            'w': 'up',
-            's': 'down'
+            arrowleft: 'left', arrowright: 'right', arrowup: 'up', arrowdown: 'down',
+            a: 'left', d: 'right', w: 'up', s: 'down'
         };
 
-        const direction = keyMap[e.key];
+        const direction = keyMap[e.key.toLowerCase()];
         if (direction) {
+            e.preventDefault(); // stop arrow keys scrolling the page
             this.move(direction);
         }
     }
@@ -127,6 +128,7 @@ export class Game {
         const { width, height } = this.canvas.getBoundingClientRect();
         this.canvas.width = width * window.devicePixelRatio;
         this.canvas.height = height * window.devicePixelRatio;
+        this.canvas.style.imageRendering = 'pixelated';
         // Reinitialize clouds on resize
         this.initializeClouds();
     }
@@ -277,8 +279,8 @@ export class Game {
 
     public destroy(): void {
         this.stop();
-        window.removeEventListener('keydown', this.handleKeyDown.bind(this));
-        window.removeEventListener('resize', this.handleResize.bind(this));
+        window.removeEventListener('keydown', this.onKeyDown);
+        window.removeEventListener('resize', this.onResize);
         this.worker.terminate();
     }
 
