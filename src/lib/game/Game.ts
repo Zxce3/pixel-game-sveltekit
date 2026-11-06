@@ -1,5 +1,5 @@
 import type { GameState, Position, TerrainType, Direction, WorkerStatus } from '$lib/types';
-import { STATUS, MESSAGE, TERRAIN, terrainColors, terrainNames } from '$lib/types';
+import { STATUS, MESSAGE, TERRAIN, terrainColors, terrainNames, terrainMovementCost } from '$lib/types';
 import type { Theme } from '$lib/theme';
 import { defaultTheme } from '$lib/theme';
 import { IdleState } from '$lib/game/state';
@@ -28,6 +28,7 @@ export class Game {
     private lastFrameTime = 0;
     private frameThrottle: number;
     private movementCooldown = false;
+    private readonly BASE_MOVE_MS = 150;
     private onKeyDown = (e: KeyboardEvent) => this.handleKeyDown(e);
     private onResize = () => this.handleResize();
     
@@ -184,10 +185,20 @@ export class Game {
 
         this.worker.postMessage({ task: MESSAGE.GAME_UPDATE, direction });
         
+        // Slower terrain (swamp, river...) makes the next step take longer.
+        const cooldown = this.BASE_MOVE_MS * this.destinationCost(direction);
         setTimeout(() => {
             this.state.isMoving = false;
             this.movementCooldown = false;
-        }, 200);
+        }, cooldown);
+    }
+
+    private destinationCost(direction: Direction): number {
+        const { x, y } = this.state.position;
+        const d = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] }[direction as 'left'] ?? [0, 0];
+        const t = this.terrainMap?.[y + d[1]]?.[x + d[0]];
+        const cost = t ? terrainMovementCost[t] : 1;
+        return Number.isFinite(cost) ? cost : 1; // blocked moves use the base delay
     }
 
     private gameLoop(timestamp = 0): void {

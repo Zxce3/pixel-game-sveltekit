@@ -46,6 +46,17 @@ let gameState: WorkerGameState = {
     lastActivityTime: Date.now()
 };
 
+const isWalkable = (t: TerrainType) => t !== TERRAIN.WATER && t !== TERRAIN.MOUNTAIN;
+const exploreTotal = (): number => terrainMap.flat().filter(isWalkable).length;
+const visited = new Set<string>(['2,2']);
+let steps = 0;
+
+function syncStats(): void {
+    gameState.steps = steps;
+    gameState.explored = visited.size;
+    gameState.exploreTotal = exploreTotal();
+}
+
 let idleCheckInterval: ReturnType<typeof setInterval>;
 
 function startIdleCheck() {
@@ -155,6 +166,7 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
  */
 function handleGameStart(time = 100): void {
     startIdleCheck();
+    syncStats();
     postMessage({
         status: STATUS.PROCESSING,
         message: 'Game initialized',
@@ -192,6 +204,9 @@ function handleMovement(direction: Direction): void {
 
     if (canMove(newPos)) {
         gameState.position = newPos;
+        steps++;
+        visited.add(`${newPos.x},${newPos.y}`);
+        syncStats();
         gameState.currentTerrain = terrainMap[newPos.y][newPos.x];
         gameState.terrain = gameState.currentTerrain;
         gameState.message = message;

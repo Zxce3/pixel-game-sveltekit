@@ -65,6 +65,11 @@ export const terrainNames: Record<TerrainType, string> = {
     H: 'Hills'
 };
 
+/** Relative cost of entering a tile; scales the move cooldown (higher = slower). */
+export const terrainMovementCost: Record<TerrainType, number> = {
+    W: Infinity, B: 1, F: 1.2, M: Infinity, G: 1, R: 1.5, S: 2, H: 1.3
+};
+
 export interface Position {
     x: number;
     y: number;
@@ -83,6 +88,11 @@ export interface GameState {
     idleState: IdleStateType;
     lastActivityTime: number;
     theme?: Theme;
+    /** Successful moves made this session. */
+    steps?: number;
+    /** Distinct walkable tiles visited / total walkable tiles. */
+    explored?: number;
+    exploreTotal?: number;
 }
 
 export interface DebugMetrics {

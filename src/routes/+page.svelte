@@ -28,6 +28,10 @@
     let browserSupportsMemoryAPI = false;
 
     let gameStarted = false;
+    let steps = 0;
+    let explored = 0;
+    let exploreTotal = 0;
+    $: exploredPct = exploreTotal ? Math.round((explored / exploreTotal) * 100) : 0;
 
     let gameState = {
         currentTerrain: 'G' as TerrainType,
@@ -110,6 +114,9 @@
             workerStatus = state.state.status;
             pixelPos = state.state.position;
             debugMessage = state.state.message || '';
+            steps = state.state.steps ?? 0;
+            explored = state.state.explored ?? 0;
+            exploreTotal = state.state.exploreTotal ?? 0;
             isWorkerBusy = state.state.isMoving;
             gameState = {
                 currentTerrain: state.currentTerrain,
@@ -237,6 +244,13 @@
                 idleState={game?.state?.idleState || 'active'}
             />
         {/if}
+
+        <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-700" aria-live="polite">
+            <span>Steps: <strong>{steps}</strong></span>
+            <span>Explored: <strong>{explored}/{exploreTotal}</strong> ({exploredPct}%)</span>
+            <span>Terrain: <strong>{terrainNames[currentTerrain]}</strong></span>
+            <span class="text-gray-500">WASD / arrows · swamp and river slow you down</span>
+        </div>
 
         <div class="relative w-full aspect-[4/3] max-h-[70vh]">
             <canvas
