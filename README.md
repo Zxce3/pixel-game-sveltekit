@@ -14,6 +14,8 @@ A pixel-style terrain exploration game built with SvelteKit, TypeScript, and Web
 - 📱 Mobile-friendly design
 - 🌈 Theme support
 - 🛠 Debug tools
+- 🧭 Step counter and exploration progress (distinct walkable tiles visited)
+- 🐢 Terrain-based movement cost (swamp, river, hills and forest slow you down)
 
 ## Technical Stack
 
