@@ -258,7 +258,7 @@
                 id="gameCanvas"
                 width="800"
                 height="600"
-                class="absolute inset-0 w-full h-full object-contain border border-gray-200 rounded"
+                class="absolute inset-0 w-full h-full object-contain [image-rendering:pixelated] border border-gray-200 rounded"
             ></canvas>
         </div>
         

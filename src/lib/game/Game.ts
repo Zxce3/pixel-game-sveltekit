@@ -30,7 +30,14 @@ export class Game {
     private movementCooldown = false;
     private readonly BASE_MOVE_MS = 150;
     private onKeyDown = (e: KeyboardEvent) => this.handleKeyDown(e);
-    private onResize = () => this.handleResize();
+
+    // Smooth movement: renderPos eases from moveFrom to the worker-confirmed tile.
+    private renderPos: Position = { x: 2, y: 2 };
+    private moveFrom: Position = { x: 2, y: 2 };
+    private moveStart = 0;
+    private moveDuration = 150;
+    private cooldownTimer: ReturnType<typeof setTimeout> | null = null;
+    private pendingDuration = 150;
     
     public state: GameState;
     public terrainColors = terrainColors;
@@ -82,11 +89,29 @@ export class Game {
             const { status, message, gameState, terrainMap } = e.data;
             
             if (gameState) {
+                const prev = this.state.position;
+                const moved = gameState.position &&
+                    (gameState.position.x !== prev.x || gameState.position.y !== prev.y);
+                // facing / isMoving are owned by the main thread (the worker always
+                // reports isMoving=false, which used to cancel the walk animation).
+                const { facing, isMoving } = this.state;
                 this.state = {
                     ...this.state,
                     ...gameState,
+                    facing,
+                    isMoving,
                     message: message || this.state.message // Prioritize incoming message
                 };
+                if (!this.terrainMap) {
+                    this.renderPos = { ...this.state.position }; // first sync: no tween
+                } else if (moved) {
+                    this.moveFrom = { ...this.renderPos };
+                    this.moveStart = performance.now();
+                    this.moveDuration = this.pendingDuration;
+                    this.state.isMoving = true;
+                } else if (this.movementCooldown) {
+                    this.releaseCooldown(); // blocked move: don't bob in place or lock input
+                }
                 this.handleStateUpdate();
             }
 
@@ -103,7 +128,6 @@ export class Game {
 
     private setupEventListeners(): void {
         window.addEventListener('keydown', this.onKeyDown);
-        window.addEventListener('resize', this.onResize);
     }
 
     private handleKeyDown(e: KeyboardEvent): void {
@@ -123,15 +147,6 @@ export class Game {
             e.preventDefault(); // stop arrow keys scrolling the page
             this.move(direction);
         }
-    }
-
-    private handleResize(): void {
-        const { width, height } = this.canvas.getBoundingClientRect();
-        this.canvas.width = width * window.devicePixelRatio;
-        this.canvas.height = height * window.devicePixelRatio;
-        this.canvas.style.imageRendering = 'pixelated';
-        // Reinitialize clouds on resize
-        this.initializeClouds();
     }
 
     private handleStateUpdate(): void {
@@ -179,18 +194,20 @@ export class Game {
     public move(direction: Direction): void {
         if (this.movementCooldown || !this.isRunning) return;
 
-        this.state.isMoving = true;
         this.state.facing = direction;
         this.movementCooldown = true;
+        // Slower terrain (swamp, river...) makes the step take longer.
+        this.pendingDuration = this.BASE_MOVE_MS * this.destinationCost(direction);
 
         this.worker.postMessage({ task: MESSAGE.GAME_UPDATE, direction });
-        
-        // Slower terrain (swamp, river...) makes the next step take longer.
-        const cooldown = this.BASE_MOVE_MS * this.destinationCost(direction);
-        setTimeout(() => {
-            this.state.isMoving = false;
-            this.movementCooldown = false;
-        }, cooldown);
+
+        this.cooldownTimer = setTimeout(() => this.releaseCooldown(), this.pendingDuration);
+    }
+
+    private releaseCooldown(): void {
+        if (this.cooldownTimer) clearTimeout(this.cooldownTimer);
+        this.cooldownTimer = null;
+        this.movementCooldown = false;
     }
 
     private destinationCost(direction: Direction): number {
@@ -201,6 +218,14 @@ export class Game {
         return Number.isFinite(cost) ? cost : 1; // blocked moves use the base delay
     }
 
+    /** Idle states render slower to save power, but never below 30fps while animating. */
+    private currentThrottle(): number {
+        if (this.state.isMoving) return 1000 / 60;
+        const animating = Object.values(this.animationSettings).some(Boolean);
+        const t = this.getFrameThrottleForState(this.state.idleState);
+        return animating ? Math.min(t, this.frameThrottle) : Math.max(t, this.frameThrottle);
+    }
+
     private gameLoop(timestamp = 0): void {
         if (!this.isRunning) return;
 
@@ -209,7 +234,7 @@ export class Game {
         // Always update state to prevent idle
         this.update(delta);
 
-        if (delta >= this.frameThrottle) {
+        if (delta >= this.currentThrottle()) {
             this.lastFrameTime = timestamp;
             this.render();
         }
@@ -223,6 +248,18 @@ export class Game {
         if (this.state.isMoving) {
             this.state.lastActivityTime = Date.now();
             this.state.idleState = IdleState.ACTIVE;
+
+            const t = Math.min(1, (now - this.moveStart) / this.moveDuration);
+            const e = t * t * (3 - 2 * t); // smoothstep
+            const to = this.state.position;
+            this.renderPos = {
+                x: this.moveFrom.x + (to.x - this.moveFrom.x) * e,
+                y: this.moveFrom.y + (to.y - this.moveFrom.y) * e
+            };
+            if (t >= 1) {
+                this.renderPos = { ...to };
+                this.state.isMoving = false;
+            }
         }
 
         // Update animations based on time passed
@@ -252,7 +289,7 @@ export class Game {
         
         drawPixel(this.ctx, {
             terrainMap: this.terrainMap || [],
-            pixelPos: this.state.position,
+            pixelPos: this.renderPos,
             facing: this.state.facing,
             isMoving: this.state.isMoving,
             animationSettings: this.animationSettings,
@@ -291,7 +328,7 @@ export class Game {
     public destroy(): void {
         this.stop();
         window.removeEventListener('keydown', this.onKeyDown);
-        window.removeEventListener('resize', this.onResize);
+        this.releaseCooldown();
         this.worker.terminate();
     }
 
@@ -309,7 +346,7 @@ export class Game {
     }
 
     private createCloud(index: number, forceOffscreen = false): Cloud {
-        const size = 60 + Math.random() * 100;
+        const size = 40 + Math.random() * 70;
         const x = forceOffscreen ? 
             -size : 
             (index * (this.canvas.width / this.CLOUD_COUNT)) + (Math.random() * 200);
@@ -318,7 +355,7 @@ export class Game {
             y: Math.random() * (this.canvas.height * 0.4),
             speed: this.MIN_CLOUD_SPEED + Math.random() * (this.MAX_CLOUD_SPEED - this.MIN_CLOUD_SPEED),
             size,
-            opacity: 0.4 + Math.random() * 0.3
+            opacity: 0.18 + Math.random() * 0.17
         };
     }
 

@@ -5,6 +5,7 @@ interface Cloud {
     x: number;
     y: number;
     size: number;
+    opacity?: number;
 }
 
 interface DrawPixelParams {
@@ -28,8 +29,9 @@ export function drawCharacter(
     facing: Direction,
     isMoving: boolean
 ): void {
-    const bounce = isMoving ? Math.sin(Date.now() / 150) * 2 : 0;
+    const bounce = isMoving ? -Math.abs(Math.sin(Date.now() / 75)) * 3 : 0;
     const scale = size / 40;
+    const legSwing = isMoving ? Math.round(Math.sin(Date.now() / 75) * 2 * scale) : 0;
 
     const baseX = Math.floor(x + size / 4);
     const baseY = Math.floor(y + size / 4 + bounce);
@@ -94,8 +96,8 @@ export function drawCharacter(
         drawRect(baseX + charSize.head, baseY + charSize.head - armOffset, charSize.limb, charSize.limb * 2, colors.shirt);
 
         // Shoes
-        drawRect(baseX, baseY + charSize.head + charSize.body + charSize.limb * 2, charSize.limb * 1.5, charSize.limb, colors.shoes);
-        drawRect(baseX + charSize.limb * 1.5, baseY + charSize.head + charSize.body + charSize.limb * 2, charSize.limb * 1.5, charSize.limb, colors.shoes);
+        drawRect(baseX, baseY + charSize.head + charSize.body + charSize.limb * 2 - legSwing, charSize.limb * 1.5, charSize.limb, colors.shoes);
+        drawRect(baseX + charSize.limb * 1.5, baseY + charSize.head + charSize.body + charSize.limb * 2 + legSwing, charSize.limb * 1.5, charSize.limb, colors.shoes);
 
     } else {
         // Front/Back view
@@ -118,8 +120,8 @@ export function drawCharacter(
         drawRect(baseX + charSize.head, baseY + charSize.head - armOffset, charSize.limb, charSize.limb * 2, colors.shirt);
 
         // Shoes
-        drawRect(baseX, baseY + charSize.head + charSize.body + charSize.limb * 2, charSize.limb * 1.5, charSize.limb, colors.shoes);
-        drawRect(baseX + charSize.limb * 1.5, baseY + charSize.head + charSize.body + charSize.limb * 2, charSize.limb * 1.5, charSize.limb, colors.shoes);
+        drawRect(baseX, baseY + charSize.head + charSize.body + charSize.limb * 2 - legSwing, charSize.limb * 1.5, charSize.limb, colors.shoes);
+        drawRect(baseX + charSize.limb * 1.5, baseY + charSize.head + charSize.body + charSize.limb * 2 + legSwing, charSize.limb * 1.5, charSize.limb, colors.shoes);
     }
 
     ctx.restore();
@@ -179,39 +181,42 @@ export function drawWaves(
     size: number,
     waterOffset = 0
 ): void {
+    ctx.save();
+    // Clip to the tile so strokes never bleed into neighbours.
     ctx.beginPath();
-    ctx.lineWidth = 8;
+    ctx.rect(x, y, size, size);
+    ctx.clip();
 
-    const waterGradient = ctx.createLinearGradient(x, y, x, y + size);
-    waterGradient.addColorStop(0, 'rgba(0, 181, 216, 0.6)');
-    waterGradient.addColorStop(1, 'rgba(0, 105, 148, 0.8)');
+    ctx.fillStyle = terrainColors.W;
+    ctx.fillRect(x, y, size, size);
 
-    ctx.strokeStyle = waterGradient;
-
+    ctx.lineWidth = Math.max(2, size / 14);
+    ctx.lineCap = 'round';
     for (let i = 0; i < 3; i++) {
-        const wavePhase = waterOffset + (i * Math.PI) / 3;
-        const yOffset = (size / 3) * i;
-
-        ctx.moveTo(x, y + yOffset + Math.sin(wavePhase) * 4);
-
+        ctx.beginPath();
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.32 - i * 0.07})`;
+        const baseY = y + (size * (i + 0.5)) / 3;
         for (let j = 0; j <= size; j += 2) {
-            const curveX = x + j;
-            const curveY = y + yOffset + Math.sin(wavePhase + j / 40) * 5;
-            ctx.lineTo(curveX, curveY);
+            // World-space x keeps the wave continuous across adjacent water tiles.
+            const wx = x + j;
+            const wy = baseY + Math.sin(wx / 22 - waterOffset + i * 1.7) * (size / 14);
+            if (j === 0) ctx.moveTo(wx, wy);
+            else ctx.lineTo(wx, wy);
         }
+        ctx.stroke();
     }
-
-    ctx.stroke();
+    ctx.restore();
 }
 
 export function drawCloud(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
-    size: number
+    size: number,
+    opacity = 0.5
 ): void {
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
 
     const circles = [
         { x: x, y: y, r: size * 0.4 },
@@ -220,11 +225,13 @@ export function drawCloud(
         { x: x + size * 0.6, y: y, r: size * 0.3 }
     ];
 
+    // Single path so overlapping circles don't double up the alpha.
+    ctx.beginPath();
     circles.forEach(circle => {
-        ctx.beginPath();
+        ctx.moveTo(circle.x + circle.r, circle.y);
         ctx.arc(circle.x, circle.y, circle.r, 0, Math.PI * 2);
-        ctx.fill();
     });
+    ctx.fill();
 
     ctx.restore();
 }
@@ -238,29 +245,30 @@ export function drawRiver(
 ): void {
     ctx.save();
     ctx.beginPath();
-    ctx.lineWidth = 4;
+    ctx.rect(x, y, size, size);
+    ctx.clip();
 
-    const riverGradient = ctx.createLinearGradient(x, y, x + size, y);
-    riverGradient.addColorStop(0, 'rgba(100, 181, 246, 0.6)');
-    riverGradient.addColorStop(1, 'rgba(30, 136, 229, 0.8)');
+    ctx.fillStyle = terrainColors.R;
+    ctx.fillRect(x, y, size, size);
 
-    ctx.strokeStyle = riverGradient;
-    ctx.fillStyle = 'rgba(79, 195, 247, 0.4)';
-
-    // Draw flowing river effect
-    const amplitude = 3;
-    const frequency = size / 80;
-    
-    ctx.beginPath();
-    ctx.moveTo(x, y + size/2);
-    
-    for (let i = 0; i <= size; i++) {
-        const xPos = x + i;
-        const yPos = y + size/2 + Math.sin(riverOffset + i * frequency) * amplitude;
-        ctx.lineTo(xPos, yPos);
+    ctx.lineCap = 'round';
+    const lines = [
+        { at: 0.32, w: size / 12, color: 'rgba(255, 255, 255, 0.45)', phase: 0 },
+        { at: 0.68, w: size / 16, color: 'rgba(30, 100, 160, 0.35)', phase: 1.3 }
+    ];
+    for (const l of lines) {
+        ctx.beginPath();
+        ctx.lineWidth = l.w;
+        ctx.strokeStyle = l.color;
+        for (let i = 0; i <= size; i += 2) {
+            const wx = x + i;
+            // riverOffset*2 completes whole cycles per wrap, so the loop is seamless.
+            const wy = y + size * l.at + Math.sin(wx / 14 - riverOffset * 2 + l.phase) * (size / 14);
+            if (i === 0) ctx.moveTo(wx, wy);
+            else ctx.lineTo(wx, wy);
+        }
+        ctx.stroke();
     }
-    
-    ctx.stroke();
     ctx.restore();
 }
 
@@ -298,13 +306,14 @@ export function drawPixel(
     for (let row = 0; row < terrainMap.length; row++) {
         for (let col = 0; col < terrainMap[row].length; col++) {
             const terrain = terrainMap[row][col];
-            if (!(row === Math.floor(pixelPos.y) && col === Math.floor(pixelPos.x))) {
+            const isPlayerTile = row === Math.round(pixelPos.y) && col === Math.round(pixelPos.x);
+            {
                 switch (terrain) {
                     case 'F':
-                        drawTrees(ctx, col * tileSize, row * tileSize, tileSize);
+                        if (!isPlayerTile) drawTrees(ctx, col * tileSize, row * tileSize, tileSize);
                         break;
                     case 'M':
-                        drawMountains(ctx, col * tileSize, row * tileSize, tileSize);
+                        if (!isPlayerTile) drawMountains(ctx, col * tileSize, row * tileSize, tileSize);
                         break;
                     case 'W':
                         if (animationSettings.enableWaves) {
@@ -316,7 +325,7 @@ export function drawPixel(
                         break;
                     case 'R':
                         if (params.animationSettings.enableRiver) {
-                            drawRiver(ctx, col * tileSize, row * tileSize, tileSize, params.riverOffset);
+                            drawRiver(ctx, col * tileSize, row * tileSize, tileSize, riverOffset);
                         } else {
                             ctx.fillStyle = terrainColors.R;
                             ctx.fillRect(col * tileSize, row * tileSize, tileSize, tileSize);
@@ -330,18 +339,20 @@ export function drawPixel(
     // Draw character
     const x = pixelPos.x * tileSize;
     const y = pixelPos.y * tileSize;
-    drawCharacter(ctx, x, y - tileSize / 8, tileSize, facing, isMoving);
+    const view = facing === 'up' ? 'back' : facing === 'down' ? 'front' : facing;
+    drawCharacter(ctx, x, y - tileSize / 8, tileSize, view, isMoving);
 
     // Draw player terrain details
-    const playerTerrain = terrainMap[Math.floor(pixelPos.y)]?.[Math.floor(pixelPos.x)];
+    const px = Math.round(pixelPos.x), py = Math.round(pixelPos.y);
+    const playerTerrain = terrainMap[py]?.[px];
     if (playerTerrain === 'F') {
-        drawTrees(ctx, Math.floor(pixelPos.x) * tileSize, Math.floor(pixelPos.y) * tileSize, tileSize);
+        drawTrees(ctx, px * tileSize, py * tileSize, tileSize);
     }
 
     // Draw clouds
     if (animationSettings.enableClouds && clouds) {
         clouds.forEach(cloud => {
-            drawCloud(ctx, cloud.x, cloud.y, cloud.size);
+            drawCloud(ctx, cloud.x, cloud.y, cloud.size, cloud.opacity);
         });
     }
 }
